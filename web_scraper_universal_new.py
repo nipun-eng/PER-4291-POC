@@ -50,16 +50,16 @@ def __save_page_text(page, selector, folder_path):
     print(f"📄 Page text saved to {filename}")
 
 
-def __capture_screenshot(page, folder_path):
-    """Single screenshot saved in specified folder"""
-    time.sleep(5)
-    filename = os.path.join(folder_path, "screenshot.png")
-    page.screenshot(path=filename, full_page=True)
-    print(f"📸 Screenshot saved as {filename}")
-
-
-def __capture_multiple_screenshots(page, num_screenshots=5, scroll_pause=1):
-    """Take multiple screenshots while scrolling and save in organized folder"""
+def __capture_multiple_screenshots(page, screenshots_per_viewport=1.5, min_screenshots=3, max_screenshots=10):
+    """
+    Take screenshots while scrolling, with dynamic count based on page length
+    
+    Args:
+        page: Playwright page object
+        screenshots_per_viewport: How many screenshots per viewport height (default 1.5)
+        min_screenshots: Minimum number of screenshots to take (default 3)
+        max_screenshots: Maximum number of screenshots to take (default 10)
+    """
     
     # Get the page title for filename base
     base_filename = __safe_filename_from(page.title())
@@ -68,14 +68,19 @@ def __capture_multiple_screenshots(page, num_screenshots=5, scroll_pause=1):
     screenshot_folder = __ensure_screenshot_folder(base_filename)
     print(f"\n📁 Saving screenshots to: {screenshot_folder}/")
     
-    # Get page height for logging
+    # Get page dimensions
     page_height = page.evaluate("document.body.scrollHeight")
     viewport_height = page.viewport_size['height']
-    print(f"\n Page height: {page_height}px, Viewport height: {viewport_height}px")
-    print(f"Taking {num_screenshots} screenshots while scrolling...")
+    
+    # Calculate dynamic number of screenshots (capped at max_screenshots)
+    raw_screenshot_count = (page_height / viewport_height) * screenshots_per_viewport
+    num_screenshots = max(min_screenshots, min(max_screenshots, int(raw_screenshot_count)))
+    
+    print(f"\n📏 Page height: {page_height}px, Viewport height: {viewport_height}px")
+    print(f"📸 Taking {num_screenshots} screenshots (max: {max_screenshots})...")
     
     for i in range(num_screenshots):
-        # Calculate scroll position
+        # Calculate scroll position (distribute evenly)
         if num_screenshots > 1:
             scroll_progress = i / (num_screenshots - 1)
             scroll_y = int((page_height - viewport_height) * scroll_progress)
@@ -85,18 +90,18 @@ def __capture_multiple_screenshots(page, num_screenshots=5, scroll_pause=1):
         # Scroll to position
         if i > 0:
             page.evaluate(f"window.scrollTo({{top: {scroll_y}, behavior: 'smooth'}})")
-            print(f"  Scrolling to position {scroll_y}px...")
-            time.sleep(scroll_pause)
+            print(f"  📍 Scrolling to position {scroll_y}px...")
+            time.sleep(1)
         
-        # Take screenshot and save in folder
+        # Take screenshot
         filename = os.path.join(screenshot_folder, f"screenshot_{i+1}.png")
         page.screenshot(path=filename, full_page=False)
-        print(f"Screenshot {i+1}/{num_screenshots} saved")
+        print(f"  ✅ Screenshot {i+1}/{num_screenshots} saved")
     
     # Full page screenshot
     full_filename = os.path.join(screenshot_folder, "full_page.png")
     page.screenshot(path=full_filename, full_page=True)
-    print(f"\n Full page screenshot saved in folder")
+    print(f"\n📸 Full page screenshot saved")
     
     return screenshot_folder
 
