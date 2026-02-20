@@ -50,15 +50,17 @@ def __save_page_text(page, selector, folder_path):
     print(f"📄 Page text saved to {filename}")
 
 
-def __capture_multiple_screenshots(page, screenshots_per_viewport=1.5, min_screenshots=3, max_screenshots=10):
+def __capture_multiple_screenshots(page, overlap_percent=20):
     """
-    Take screenshots while scrolling, with dynamic count based on page length
+    Take screenshots while scrolling until the page ends, with configurable overlap
     
     Args:
         page: Playwright page object
-        screenshots_per_viewport: How many screenshots per viewport height (default 1.5)
-        min_screenshots: Minimum number of screenshots to take (default 3)
-        max_screenshots: Maximum number of screenshots to take (default 10)
+        overlap_percent: Percentage of overlap between consecutive screenshots (default 20%)
+                       Higher overlap = more screenshots, smoother transitions
+    
+    Returns:
+        Path to screenshot folder
     """
     
     # Get the page title for filename base
@@ -72,36 +74,65 @@ def __capture_multiple_screenshots(page, screenshots_per_viewport=1.5, min_scree
     page_height = page.evaluate("document.body.scrollHeight")
     viewport_height = page.viewport_size['height']
     
-    # Calculate dynamic number of screenshots (capped at max_screenshots)
-    raw_screenshot_count = (page_height / viewport_height) * screenshots_per_viewport
-    num_screenshots = max(min_screenshots, min(max_screenshots, int(raw_screenshot_count)))
-    
     print(f"\n📏 Page height: {page_height}px, Viewport height: {viewport_height}px")
-    print(f"📸 Taking {num_screenshots} screenshots (max: {max_screenshots})...")
     
-    for i in range(num_screenshots):
-        # Calculate scroll position (distribute evenly)
-        if num_screenshots > 1:
-            scroll_progress = i / (num_screenshots - 1)
-            scroll_y = int((page_height - viewport_height) * scroll_progress)
-        else:
-            scroll_y = 0
+    # Calculate step size with overlap
+    # If overlap is 20%, we move down by 80% of viewport each time
+    step_size = int(viewport_height * (1 - overlap_percent / 100))
+    
+    # Calculate how many screenshots we need
+    if page_height <= viewport_height:
+        # Page fits in one viewport
+        num_screenshots = 1
+        print("📸 Page fits in one viewport, taking 1 screenshot")
+    else:
+        # Calculate number of steps needed to cover the page
+        # We start at 0, then move down by step_size until we reach the bottom
+        # Add 1 for the first screenshot
+        num_screenshots = ((page_height - viewport_height) // step_size) + 2
+        print(f"📸 Will take approximately {num_screenshots} screenshots with {overlap_percent}% overlap")
+    
+    screenshot_count = 0
+    current_scroll = 0
+    
+    while current_scroll < page_height - viewport_height:
+        screenshot_count += 1
         
         # Scroll to position
-        if i > 0:
-            page.evaluate(f"window.scrollTo({{top: {scroll_y}, behavior: 'smooth'}})")
-            print(f"  📍 Scrolling to position {scroll_y}px...")
-            time.sleep(1)
+        if current_scroll > 0:
+            page.evaluate(f"window.scrollTo({{top: {current_scroll}, behavior: 'smooth'}})")
+            print(f"  📍 Scrolling to position {current_scroll}px...")
+            time.sleep(1)  # Wait for scroll to complete and content to load
         
         # Take screenshot
-        filename = os.path.join(screenshot_folder, f"screenshot_{i+1}.png")
+        filename = os.path.join(screenshot_folder, f"screenshot_{screenshot_count}.png")
         page.screenshot(path=filename, full_page=False)
-        print(f"  ✅ Screenshot {i+1}/{num_screenshots} saved")
+        print(f"  ✅ Screenshot {screenshot_count} saved")
+        
+        # Move down by step_size for next screenshot
+        current_scroll += step_size
     
-    # Full page screenshot
+    # Take final screenshot at the bottom
+    if current_scroll >= page_height - viewport_height:
+        screenshot_count += 1
+        
+        # Scroll to the very bottom
+        final_scroll = page_height - viewport_height
+        page.evaluate(f"window.scrollTo({{top: {final_scroll}, behavior: 'smooth'}})")
+        print(f"  📍 Scrolling to bottom at {final_scroll}px...")
+        time.sleep(1)
+        
+        # Take final screenshot
+        filename = os.path.join(screenshot_folder, f"screenshot_{screenshot_count}.png")
+        page.screenshot(path=filename, full_page=False)
+        print(f"  ✅ Screenshot {screenshot_count} (bottom) saved")
+    
+    # Full page screenshot for reference
     full_filename = os.path.join(screenshot_folder, "full_page.png")
     page.screenshot(path=full_filename, full_page=True)
     print(f"\n📸 Full page screenshot saved")
+    print(f"📁 Total screenshots taken: {screenshot_count}")
+    print(f"📁 All screenshots in: {screenshot_folder}/")
     
     return screenshot_folder
 
